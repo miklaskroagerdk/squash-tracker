@@ -44,19 +44,21 @@ class ExternalDatabaseManager:
             return uri
             
         elif self.db_type == 'sqlite':
-            # Custom SQLite path
-            db_path = os.getenv('SQLITE_PATH', '/tmp/external_squash_data/squash_tracker.db')
+            # Custom SQLite path with persistent storage
+            db_path = os.getenv('SQLITE_PATH', '/var/lib/squash_data/squash_tracker.db')
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
             uri = f"sqlite:///{db_path}"
-            self.logger.info(f"Using SQLite: {db_path}")
+            self.logger.info(f"Using Persistent SQLite: {db_path}")
             return uri
             
         else:
-            # Default: Cloud SQLite with persistent storage
-            persistent_dir = '/tmp/external_squash_data'
+            # Default: Persistent SQLite storage
+            persistent_dir = '/var/lib/squash_data'
             os.makedirs(persistent_dir, exist_ok=True)
             db_path = os.path.join(persistent_dir, 'squash_tracker.db')
             uri = f"sqlite:///{db_path}"
-            self.logger.info(f"Using Cloud SQLite: {db_path}")
+            self.logger.info(f"Using Persistent Cloud SQLite: {db_path}")
             return uri
     
     def test_connection(self):
