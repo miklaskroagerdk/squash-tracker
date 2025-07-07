@@ -69,15 +69,19 @@ def get_database_status():
         # Test database connection
         connection_ok = external_db.test_connection()
         
-        # Get database file info
+        # Get database info
         db_uri = external_db.get_database_uri()
+        db_info = external_db.get_database_info()
+        
+        # For SQLite, get file info
         if 'sqlite:///' in db_uri:
             db_path = db_uri.replace('sqlite:///', '')
             db_exists = os.path.exists(db_path)
             db_size = os.path.getsize(db_path) if db_exists else 0
         else:
+            # For PostgreSQL or other external databases
             db_exists = connection_ok
-            db_size = 0
+            db_size = 0  # Size not applicable for external databases
         
         # Get backup info
         backups = backup_manager.get_backup_info()
@@ -85,7 +89,11 @@ def get_database_status():
         return jsonify({
             'success': True,
             'database': {
-                'uri': db_uri,
+                'type': external_db.db_type,
+                'connection_string_masked': db_info['uri_masked'],
+                'host': db_info['host'] or 'local',
+                'port': db_info['port'] or 'default',
+                'database_name': db_info['database'] or 'default',
                 'exists': db_exists,
                 'size': db_size,
                 'connection_ok': connection_ok

@@ -9,9 +9,15 @@ class ExternalDatabaseManager:
         self.logger = logging.getLogger('external_database')
         self.db_type = os.getenv('DB_TYPE', 'cloud_sqlite')
         self.database_url = os.getenv('DATABASE_URL', None)
+        self.connection_string = os.getenv('DB_CONNECTION_STRING', None)
         
     def get_database_uri(self):
         """Get the appropriate database URI based on environment"""
+        
+        # Check for DB_CONNECTION_STRING first (our preferred method)
+        if self.connection_string:
+            self.logger.info(f"Using DB_CONNECTION_STRING: {self.connection_string[:20]}...")
+            return self.connection_string
         
         # Check for explicit DATABASE_URL (common in cloud deployments)
         if self.database_url:
@@ -113,4 +119,11 @@ class ExternalDatabaseManager:
             'database': parsed.path.lstrip('/') if parsed.path else None,
             'uri_masked': f"{parsed.scheme}://***:***@{parsed.hostname}:{parsed.port}{parsed.path}" if parsed.hostname else uri
         }
+    
+    def get_engine(self):
+        """Get SQLAlchemy engine for the database"""
+        from sqlalchemy import create_engine
+        
+        uri = self.get_database_uri()
+        return create_engine(uri)
 
