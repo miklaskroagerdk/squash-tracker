@@ -9,14 +9,14 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY src/requirements.txt .
+# Copy requirements file from src directory
+COPY ./src/requirements.txt ./requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire src directory
-COPY src/ .
+# Copy the entire src directory contents to app directory
+COPY ./src/ ./
 
 # Expose port
 EXPOSE 5000
