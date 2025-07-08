@@ -218,11 +218,13 @@ function App() {
 
     try {
       console.log('Sending session creation request...')
-      // First create the session
+      // Create the session with player_ids
       const response = await fetch(`${API_BASE}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          player_ids: selectedPlayersForSession
+        })
       })
       
       console.log('Session creation response:', response.status)
@@ -232,46 +234,33 @@ function App() {
         console.log('Session created:', session)
         setCurrentSession(session)
         
-        // Generate matches locally
-        const localMatches = generateMatches(selectedPlayersForSession)
-        console.log('Generated matches:', localMatches)
+        // The backend already created matches, so we just need to format them for the frontend
+        const formattedMatches = (session.matches || []).map(match => ({
+          id: match.id,
+          player1: {
+            id: match.player1_id,
+            name: match.player1_name
+          },
+          player2: {
+            id: match.player2_id,
+            name: match.player2_name
+          },
+          player1_score: match.player1_score !== null ? match.player1_score : '',
+          player2_score: match.player2_score !== null ? match.player2_score : '',
+          completed: match.player1_score !== null && match.player2_score !== null
+        }))
         
-        // Save each match to the backend
-        const savedMatches = []
-        for (const match of localMatches) {
-          try {
-            console.log('Creating match:', match)
-            const matchResponse = await fetch(`${API_BASE}/matches`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                session_id: session.id,
-                player1_id: match.player1.id,
-                player2_id: match.player2.id
-                // Don't include scores - let them be null initially
-              })
-            })
-            
-            if (matchResponse.ok) {
-              const savedMatch = await matchResponse.json()
-              savedMatches.push({
-                ...match,
-                id: savedMatch.id,
-                player1_score: '',
-                player2_score: ''
-              })
-            }
-          } catch (error) {
-            console.error('Error saving match:', error)
-          }
-        }
-        
-        setSessionMatches(savedMatches)
+        setSessionMatches(formattedMatches)
         setCurrentView('session')
         fetchSessions()
+      } else {
+        const errorData = await response.json()
+        console.error('Error response:', errorData)
+        alert(`Error creating session: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error creating session:', error)
+      alert('Error creating session. Please try again.')
     }
   }
 
