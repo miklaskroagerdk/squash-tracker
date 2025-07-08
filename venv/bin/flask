@@ -1,4 +1,4 @@
-#!/home/ubuntu/squash-tracker-final/venv/bin/python3.11
+#!/home/ubuntu/squash-tracker-deploy/venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
