@@ -164,12 +164,21 @@ function App() {
   }
 
   const handlePlayerSelection = (playerId, isChecked) => {
+    console.log('=== PLAYER SELECTION DEBUG ===')
+    console.log('Player ID:', playerId, 'Type:', typeof playerId)
+    console.log('Is Checked:', isChecked)
+    console.log('Current selectedPlayersForSession:', selectedPlayersForSession)
+    
     setSelectedPlayersForSession(prevSelected => {
+      console.log('Previous selected:', prevSelected)
+      let newSelected
       if (isChecked) {
-        return prevSelected.includes(playerId) ? prevSelected : [...prevSelected, playerId]
+        newSelected = prevSelected.includes(playerId) ? prevSelected : [...prevSelected, playerId]
       } else {
-        return prevSelected.filter(id => id !== playerId)
+        newSelected = prevSelected.filter(id => id !== playerId)
       }
+      console.log('New selected:', newSelected)
+      return newSelected
     })
   }
 

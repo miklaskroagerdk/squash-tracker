@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Squash Match Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .button-primary {
+            background-color: #22c55e;
+            color: white;
+        }
+        .button-secondary {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .button-disabled {
+            background-color: #ccc;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .checkbox-item {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .checkbox-item input {
+            margin-right: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+        .success {
+            color: green;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h1>🏆 Squash Match Tracker</h1>
+        <p>Track matches and crown the ultimate champion</p>
+        
+        <!-- Dashboard View -->
+        <div id="dashboard" class="container">
+            <button class="button button-primary" onclick="showNewSession()">+ New Session</button>
+            <button class="button button-secondary" onclick="showManagePlayers()">👥 Manage Players</button>
+            
+            <div class="container">
+                <h3>🏆 Leaderboard</h3>
+                <div id="leaderboard">Loading...</div>
+            </div>
+            
+            <div class="container">
+                <h3>⚡ Latest Highlights</h3>
+                <div id="highlights">Loading...</div>
+            </div>
+            
+            <div class="container">
+                <h3>📅 Recent Sessions</h3>
+                <div id="sessions">Loading...</div>
+            </div>
+        </div>
+        
+        <!-- New Session View -->
+        <div id="newSession" class="container hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Create New Session</h2>
+                <button class="button" onclick="showDashboard()">Back to Dashboard</button>
+            </div>
+            
+            <h3>👥 Select Players for Today</h3>
+            <p>Choose who's playing today. We'll automatically generate matches.</p>
+            
+            <div id="playerSelection">
+                <!-- Players will be loaded here -->
+            </div>
+            
+            <div id="sessionError" class="error hidden"></div>
+            <div id="sessionSuccess" class="success hidden"></div>
+            
+            <button id="createSessionBtn" class="button button-disabled" onclick="createSession()" disabled>
+                Select at least 2 players
+            </button>
+        </div>
+        
+        <!-- Manage Players View -->
+        <div id="managePlayers" class="container hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Manage Players</h2>
+                <button class="button" onclick="showDashboard()">Back to Dashboard</button>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="newPlayerName" placeholder="Enter player name" style="padding: 10px; margin-right: 10px;">
+                <button class="button button-primary" onclick="addPlayer()">Add Player</button>
+            </div>
+            
+            <div id="playersList">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let players = [];
+        let selectedPlayers = [];
+        let currentView = 'dashboard';
+        
+        // API base URL
+        const API_BASE = '/api';
+        
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+        
+        // Load initial data
+        async function loadData() {
+            try {
+                await loadPlayers();
+                await loadSessions();
+                await loadLeaderboard();
+                await loadHighlights();
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        // Load players
+        async function loadPlayers() {
+            try {
+                const response = await fetch(`${API_BASE}/players`);
+                players = await response.json();
+                updatePlayerSelection();
+                updatePlayersList();
+            } catch (error) {
+                console.error('Error loading players:', error);
+            }
+        }
+        
+        // Load sessions
+        async function loadSessions() {
+            try {
+                const response = await fetch(`${API_BASE}/sessions`);
+                const sessions = await response.json();
+                updateSessionsList(sessions);
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                document.getElementById('sessions').innerHTML = 'No sessions yet!';
+            }
+        }
+        
+        // Load leaderboard
+        async function loadLeaderboard() {
+            try {
+                const response = await fetch(`${API_BASE}/leaderboard`);
+                const leaderboard = await response.json();
+                updateLeaderboard(leaderboard);
+            } catch (error) {
+                console.error('Error loading leaderboard:', error);
+                document.getElementById('leaderboard').innerHTML = 'No matches yet!';
+            }
+        }
+        
+        // Load highlights
+        async function loadHighlights() {
+            try {
+                const response = await fetch(`${API_BASE}/highlights`);
+                const highlights = await response.json();
+                updateHighlights(highlights);
+            } catch (error) {
+                console.error('Error loading highlights:', error);
+                document.getElementById('highlights').innerHTML = 'No recent matches to highlight yet!';
+            }
+        }
+        
+        // View management
+        function showDashboard() {
+            hideAllViews();
+            document.getElementById('dashboard').classList.remove('hidden');
+            currentView = 'dashboard';
+        }
+        
+        function showNewSession() {
+            hideAllViews();
+            document.getElementById('newSession').classList.remove('hidden');
+            currentView = 'newSession';
+            selectedPlayers = [];
+            updatePlayerSelection();
+        }
+        
+        function showManagePlayers() {
+            hideAllViews();
+            document.getElementById('managePlayers').classList.remove('hidden');
+            currentView = 'managePlayers';
+        }
+        
+        function hideAllViews() {
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('newSession').classList.add('hidden');
+            document.getElementById('managePlayers').classList.add('hidden');
+        }
+        
+        // Player selection
+        function updatePlayerSelection() {
+            const container = document.getElementById('playerSelection');
+            container.innerHTML = '';
+            
+            players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = 'checkbox-item';
+                div.innerHTML = `
+                    <label>
+                        <input type="checkbox" value="${player.id}" onchange="togglePlayer(${player.id}, this.checked)">
+                        ${player.name}
+                    </label>
+                `;
+                container.appendChild(div);
+            });
+            
+            updateCreateButton();
+        }
+        
+        function togglePlayer(playerId, checked) {
+            if (checked) {
+                if (!selectedPlayers.includes(playerId)) {
+                    selectedPlayers.push(playerId);
+                }
+            } else {
+                selectedPlayers = selectedPlayers.filter(id => id !== playerId);
+            }
+            updateCreateButton();
+        }
+        
+        function updateCreateButton() {
+            const button = document.getElementById('createSessionBtn');
+            if (selectedPlayers.length >= 2) {
+                button.textContent = `Create Session with ${selectedPlayers.length} Players`;
+                button.className = 'button button-primary';
+                button.disabled = false;
+            } else {
+                button.textContent = 'Select at least 2 players';
+                button.className = 'button button-disabled';
+                button.disabled = true;
+            }
+        }
+        
+        // Create session
+        async function createSession() {
+            if (selectedPlayers.length < 2) {
+                showError('Please select at least 2 players');
+                return;
+            }
+            
+            try {
+                console.log('Creating session with players:', selectedPlayers);
+                
+                const response = await fetch(`${API_BASE}/sessions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        player_ids: selectedPlayers
+                    })
+                });
+                
+                if (response.ok) {
+                    const session = await response.json();
+                    showSuccess(`Session created successfully with ${selectedPlayers.length} players!`);
+                    setTimeout(() => {
+                        showDashboard();
+                        loadData(); // Refresh data
+                    }, 2000);
+                } else {
+                    const errorText = await response.text();
+                    showError(`Failed to create session: ${errorText}`);
+                }
+            } catch (error) {
+                console.error('Error creating session:', error);
+                showError('Failed to create session. Please try again.');
+            }
+        }
+        
+        // Add player
+        async function addPlayer() {
+            const nameInput = document.getElementById('newPlayerName');
+            const name = nameInput.value.trim();
+            
+            if (!name) {
+                alert('Please enter a player name');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/players`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+                
+                if (response.ok) {
+                    nameInput.value = '';
+                    await loadPlayers();
+                } else {
+                    alert('Failed to add player');
+                }
+            } catch (error) {
+                console.error('Error adding player:', error);
+                alert('Failed to add player');
+            }
+        }
+        
+        // Update UI functions
+        function updatePlayersList() {
+            const container = document.getElementById('playersList');
+            if (players.length === 0) {
+                container.innerHTML = '<p>No players yet. Add some players to get started!</p>';
+                return;
+            }
+            
+            container.innerHTML = players.map(player => `
+                <div style="padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px;">
+                    <strong>${player.name}</strong> - ELO: ${player.elo_rating}
+                </div>
+            `).join('');
+        }
+        
+        function updateSessionsList(sessions) {
+            const container = document.getElementById('sessions');
+            if (sessions.length === 0) {
+                container.innerHTML = 'No sessions yet! Create your first session to start tracking.';
+                return;
+            }
+            
+            container.innerHTML = sessions.slice(0, 5).map(session => `
+                <div style="padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px;">
+                    <strong>Session ${session.id}</strong> - ${new Date(session.created_at).toLocaleDateString()}
+                    <br>Players: ${session.player_names ? session.player_names.join(', ') : 'Unknown'}
+                </div>
+            `).join('');
+        }
+        
+        function updateLeaderboard(leaderboard) {
+            const container = document.getElementById('leaderboard');
+            if (leaderboard.length === 0) {
+                container.innerHTML = 'No matches yet! Create your first session to start tracking.';
+                return;
+            }
+            
+            container.innerHTML = leaderboard.map((player, index) => `
+                <div style="padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px; display: flex; justify-content: space-between;">
+                    <span><strong>#${index + 1} ${player.name}</strong></span>
+                    <span>ELO: ${player.elo_rating}</span>
+                </div>
+            `).join('');
+        }
+        
+        function updateHighlights(highlights) {
+            const container = document.getElementById('highlights');
+            if (highlights.length === 0) {
+                container.innerHTML = 'No recent matches to highlight yet!';
+                return;
+            }
+            
+            container.innerHTML = highlights.slice(0, 3).map(highlight => `
+                <div style="padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px;">
+                    ${highlight.description || 'Recent match completed'}
+                </div>
+            `).join('');
+        }
+        
+        // Error/success handling
+        function showError(message) {
+            const errorDiv = document.getElementById('sessionError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('sessionSuccess');
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+            setTimeout(() => {
+                successDiv.classList.add('hidden');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+
