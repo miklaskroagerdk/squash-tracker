@@ -18,16 +18,32 @@ function App() {
   // Fetch data on component mount
   useEffect(() => {
     const loadData = async () => {
+      console.log('Starting to load data...')
       setLoading(true)
+      
+      // Set a maximum timeout for loading
+      const loadingTimeout = setTimeout(() => {
+        console.warn('Loading timeout reached, clearing loading state')
+        setLoading(false)
+      }, 10000) // 10 second timeout
+      
       try {
-        await fetchPlayers()
-        await fetchSessions()
-        await fetchLeaderboard()
-        await fetchHighlights()
+        // Load data with individual error handling
+        const promises = [
+          fetchPlayers().catch(e => console.error('Players fetch failed:', e)),
+          fetchSessions().catch(e => console.error('Sessions fetch failed:', e)),
+          fetchLeaderboard().catch(e => console.error('Leaderboard fetch failed:', e)),
+          fetchHighlights().catch(e => console.error('Highlights fetch failed:', e))
+        ]
+        
+        await Promise.allSettled(promises)
+        console.log('Data loading completed')
       } catch (error) {
         console.error('Error loading data:', error)
       } finally {
+        clearTimeout(loadingTimeout)
         setLoading(false)
+        console.log('Loading state cleared')
       }
     }
     loadData()
@@ -157,25 +173,47 @@ function App() {
     })
   }
 
-  const createSessionWithPlayers = async () => {
-    console.log('Creating session with players:', selectedPlayersForSession)
+   const createSessionWithPlayers = async () => {
+    console.log('=== SESSION CREATION DEBUG ===')
+    console.log('Selected players for session:', selectedPlayersForSession)
+    console.log('Selected players type:', typeof selectedPlayersForSession)
+    console.log('Selected players length:', selectedPlayersForSession.length)
+    console.log('Available players:', players)
+    console.log('API_BASE:', API_BASE)
     
     if (selectedPlayersForSession.length < 2) {
       alert('Please select at least 2 players to create a session.')
       return
     }
 
+    // Ensure player IDs are numbers
+    const playerIds = selectedPlayersForSession.map(id => parseInt(id, 10))
+    console.log('Converted player IDs:', playerIds)
+    
+    const requestData = { player_ids: playerIds }
+    console.log('Request data:', JSON.stringify(requestData))
+    
+    const url = `${API_BASE}/sessions`
+    console.log('Request URL:', url)
+
     try {
-      const response = await fetch(`${API_BASE}/sessions`, {
+      console.log('Sending session creation request...')
+      
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          player_ids: selectedPlayersForSession
-        })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestData)
       })
+      
+      console.log('Session creation response status:', response.status)
+      console.log('Session creation response headers:', [...response.headers.entries()])
       
       if (response.ok) {
         const session = await response.json()
+        console.log('Session created successfully:', session)
         setCurrentSession(session)
         
         const formattedMatches = (session.matches || []).map(match => ({
@@ -196,14 +234,24 @@ function App() {
         setSessionMatches(formattedMatches)
         setCurrentView('session')
         fetchSessions()
+        
+        // Clear selected players
+        setSelectedPlayersForSession([])
       } else {
-        const errorData = await response.json()
-        console.error('Error response:', errorData)
-        alert(`Error creating session: ${errorData.error || 'Unknown error'}`)
+        const errorText = await response.text()
+        console.error('Session creation failed:', response.status, errorText)
+        console.error('Response headers:', [...response.headers.entries()])
+        
+        try {
+          const errorData = JSON.parse(errorText)
+          alert(`Error creating session: ${errorData.error || 'Unknown error'}`)
+        } catch (e) {
+          alert(`Error creating session: HTTP ${response.status} - ${errorText}`)
+        }
       }
     } catch (error) {
-      console.error('Error creating session:', error)
-      alert('Error creating session. Please try again.')
+      console.error('Session creation error:', error)
+      alert(`Network error creating session: ${error.message}`)
     }
   }
 

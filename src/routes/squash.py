@@ -102,19 +102,28 @@ def get_sessions():
 def create_session(data):
     """Create a new session with matches"""
     try:
+        print(f"DEBUG: Received session creation request with data: {data}")
+        
         player_ids = data.get('player_ids', [])
+        print(f"DEBUG: Extracted player_ids: {player_ids}")
+        
         if len(player_ids) < 2:
+            print(f"DEBUG: Not enough players: {len(player_ids)}")
             return jsonify({'error': 'At least 2 players are required'}), 400
         
         # Validate all players exist
         players = Player.query.filter(Player.id.in_(player_ids)).all()
+        print(f"DEBUG: Found {len(players)} players in database for IDs {player_ids}")
+        
         if len(players) != len(player_ids):
+            print(f"DEBUG: Player count mismatch. Expected: {len(player_ids)}, Found: {len(players)}")
             return jsonify({'error': 'One or more players not found'}), 404
         
         # Create session
         session = Session()
         db.session.add(session)
         db.session.flush()  # Get session ID
+        print(f"DEBUG: Created session with ID: {session.id}")
         
         # Create matches for all player combinations
         matches_created = 0
@@ -127,15 +136,25 @@ def create_session(data):
                 )
                 db.session.add(match)
                 matches_created += 1
+                print(f"DEBUG: Created match {matches_created}: Player {player_ids[i]} vs Player {player_ids[j]}")
         
         db.session.commit()
+        print(f"DEBUG: Successfully committed session with {matches_created} matches")
         
         # Return session with matches
         session = Session.query.get(session.id)
-        return jsonify(session.to_dict())
+        result = session.to_dict()
+        print(f"DEBUG: Returning session data: {result}")
+        return jsonify(result)
+        
     except SQLAlchemyError as e:
         db.session.rollback()
+        print(f"DEBUG: SQLAlchemy error: {str(e)}")
         return jsonify({'error': 'Database error occurred'}), 500
+    except Exception as e:
+        db.session.rollback()
+        print(f"DEBUG: Unexpected error: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 @squash_bp.route('/sessions/<int:session_id>', methods=['DELETE'])
 def delete_session(session_id):
