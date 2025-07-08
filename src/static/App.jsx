@@ -498,6 +498,38 @@ function App() {
     }
   }
 
+  // Delete session
+  const deleteSession = async (sessionId) => {
+    if (!confirm('Are you sure you want to delete this session? This will delete all matches and revert ELO changes.')) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE}/sessions/${sessionId}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        // Refresh all data after deletion
+        await fetchSessions()
+        await fetchLeaderboard()
+        await fetchHighlights()
+        
+        // If we're currently viewing the deleted session, go back to dashboard
+        if (currentSession && currentSession.id === sessionId) {
+          setCurrentView('dashboard')
+          setCurrentSession(null)
+        }
+      } else {
+        const errorData = await response.json()
+        alert(`Error deleting session: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error)
+      alert('Error deleting session. Please try again.')
+    }
+  }
+
   // Get emoji for leaderboard position
   const getPositionEmoji = (position, total) => {
     if (position === 1) return '🏆'
@@ -709,6 +741,14 @@ function App() {
                     >
                       View
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deleteSession(session.id)}
+                      className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -799,6 +839,14 @@ function App() {
               Reopen Session
             </Button>
           )}
+          <Button 
+            onClick={() => deleteSession(currentSession?.id)} 
+            variant="outline" 
+            className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+          >
+            <X className="h-4 w-4 mr-2" />
+            Delete Session
+          </Button>
           <Button variant="outline" onClick={() => setCurrentView('dashboard')} className="border-gray-300 text-gray-600 hover:bg-gray-50">
             Back to Dashboard
           </Button>

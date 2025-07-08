@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify
 from datetime import datetime
+from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from models.squash import db, Player, Session, Match
 
@@ -75,10 +75,22 @@ def create_player(data):
         db.session.rollback()
         return jsonify({'error': 'Database error occurred'}), 500
 
+@squash_bp.route('/players/<int:player_id>', methods=['DELETE'])
+def delete_player(player_id):
+    """Soft delete a player (mark as inactive)"""
+    try:
+        player = Player.query.get_or_404(player_id)
+        player.active = False
+        db.session.commit()
+        return jsonify({'message': 'Player deleted successfully'})
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({'error': 'Database error occurred'}), 500
+
 # Session endpoints
 @squash_bp.route('/sessions', methods=['GET'])
 def get_sessions():
-    """Get all sessions"""
+    """Get all sessions with their matches"""
     try:
         sessions = Session.query.order_by(Session.created_at.desc()).all()
         return jsonify([session.to_dict() for session in sessions])
@@ -88,67 +100,69 @@ def get_sessions():
 @squash_bp.route('/sessions', methods=['POST'])
 @validate_json_request()
 def create_session(data):
-    """Create a new session"""
+    """Create a new session with matches"""
     try:
-        session_date = datetime.utcnow().date()
-        if 'date' in data:
-            try:
-                session_date = datetime.fromisoformat(data['date']).date()
-            except ValueError:
-                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        player_ids = data.get('player_ids', [])
+        if len(player_ids) < 2:
+            return jsonify({'error': 'At least 2 players are required'}), 400
         
-        notes = data.get('notes', '').strip() if data.get('notes') else None
+        # Validate all players exist
+        players = Player.query.filter(Player.id.in_(player_ids)).all()
+        if len(players) != len(player_ids):
+            return jsonify({'error': 'One or more players not found'}), 404
         
-        session = Session(date=session_date, notes=notes)
+        # Create session
+        session = Session()
         db.session.add(session)
+        db.session.flush()  # Get session ID
+        
+        # Create matches for all player combinations
+        matches_created = 0
+        for i in range(len(player_ids)):
+            for j in range(i + 1, len(player_ids)):
+                match = Match(
+                    session_id=session.id,
+                    player1_id=player_ids[i],
+                    player2_id=player_ids[j]
+                )
+                db.session.add(match)
+                matches_created += 1
+        
         db.session.commit()
         
-        return jsonify(session.to_dict()), 201
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return jsonify({'error': 'Database error occurred'}), 500
-
-@squash_bp.route('/sessions/<int:session_id>', methods=['GET'])
-def get_session(session_id):
-    """Get specific session with all matches"""
-    try:
-        session = Session.query.get_or_404(session_id)
-        return jsonify(session.to_dict())
-    except SQLAlchemyError as e:
-        return jsonify({'error': 'Database error occurred'}), 500
-
-@squash_bp.route('/sessions/<int:session_id>/complete', methods=['POST'])
-def complete_session(session_id):
-    """Mark session as completed"""
-    try:
-        session = Session.query.get_or_404(session_id)
-        
-        if session.completed:
-            return jsonify({'error': 'Session is already completed'}), 400
-        
-        session.completed = True
-        session.completed_at = datetime.utcnow()
-        db.session.commit()
-        
+        # Return session with matches
+        session = Session.query.get(session.id)
         return jsonify(session.to_dict())
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': 'Database error occurred'}), 500
 
-@squash_bp.route('/sessions/<int:session_id>/reopen', methods=['POST'])
-def reopen_session(session_id):
-    """Reopen a completed session"""
+@squash_bp.route('/sessions/<int:session_id>', methods=['DELETE'])
+def delete_session(session_id):
+    """Delete a session and all its matches"""
     try:
         session = Session.query.get_or_404(session_id)
         
-        if not session.completed:
-            return jsonify({'error': 'Session is not completed'}), 400
+        # First, revert ELO changes for all completed matches in this session
+        completed_matches = Match.query.filter_by(session_id=session_id).filter(
+            Match.player1_score.isnot(None),
+            Match.player2_score.isnot(None)
+        ).all()
         
-        session.completed = False
-        session.completed_at = None
+        for match in completed_matches:
+            if match.player1_elo_change is not None:
+                match.player1.elo_rating -= match.player1_elo_change
+            if match.player2_elo_change is not None:
+                match.player2.elo_rating -= match.player2_elo_change
+        
+        # Delete all matches in the session
+        Match.query.filter_by(session_id=session_id).delete()
+        
+        # Delete the session
+        db.session.delete(session)
         db.session.commit()
         
-        return jsonify(session.to_dict())
+        return jsonify({'message': 'Session and all matches deleted successfully'})
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': 'Database error occurred'}), 500
@@ -200,7 +214,25 @@ def create_match(data):
         db.session.add(match)
         db.session.commit()
         
-        return jsonify(match.to_dict()), 201
+        # Prepare response with ELO changes if match is completed
+        response_data = match.to_dict()
+        if match.player1_elo_change is not None and match.player2_elo_change is not None:
+            response_data['elo_changes'] = {
+                'player1': {
+                    'name': match.player1.name,
+                    'elo_before': match.player1_elo_before,
+                    'elo_change': match.player1_elo_change,
+                    'elo_after': match.player1.elo_rating
+                },
+                'player2': {
+                    'name': match.player2.name,
+                    'elo_before': match.player2_elo_before,
+                    'elo_change': match.player2_elo_change,
+                    'elo_after': match.player2.elo_rating
+                }
+            }
+        
+        return jsonify(response_data), 201
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({'error': 'Database error occurred'}), 500
@@ -215,6 +247,11 @@ def update_match(match_id, data):
         # Store original ELO ratings before update
         original_player1_elo = match.player1.elo_rating
         original_player2_elo = match.player2.elo_rating
+        
+        # If match was already completed, revert previous ELO changes
+        if match.is_completed() and match.player1_elo_change is not None and match.player2_elo_change is not None:
+            match.player1.elo_rating -= match.player1_elo_change
+            match.player2.elo_rating -= match.player2_elo_change
         
         # Update scores if provided
         if 'player1_score' in data and 'player2_score' in data:
@@ -275,9 +312,15 @@ def update_match(match_id, data):
 
 @squash_bp.route('/matches/<int:match_id>', methods=['DELETE'])
 def delete_match(match_id):
-    """Delete a match"""
+    """Delete a match and revert ELO changes"""
     try:
         match = Match.query.get_or_404(match_id)
+        
+        # Revert ELO changes if match was completed
+        if match.is_completed() and match.player1_elo_change is not None and match.player2_elo_change is not None:
+            match.player1.elo_rating -= match.player1_elo_change
+            match.player2.elo_rating -= match.player2_elo_change
+        
         db.session.delete(match)
         db.session.commit()
         return jsonify({'message': 'Match deleted successfully'})
